@@ -13,5 +13,4 @@ openai
 fpdf2
 plotly
 pandas
-bcrypt
-python-multipart
+passlib[bcrypt]
