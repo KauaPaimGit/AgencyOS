@@ -1,7 +1,7 @@
 """
 Finance Router — Projetos, Receitas, Despesas, Dashboard Financeiro, Marketing KPIs e PDF
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from typing import List, Optional
 from datetime import datetime, date
 from decimal import Decimal
 from pydantic import BaseModel
+from uuid import uuid4
 import json
 
 from app.database import get_db
@@ -20,6 +21,7 @@ from app.services import (
     _execute_add_expense,
     _execute_add_marketing_stats,
 )
+from app.modules.finance.report_service import FinanceReportService
 
 router = APIRouter(tags=["Finance"])
 
@@ -532,9 +534,51 @@ def get_project_marketing_kpis(project_id: str, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/projects/{project_id}/export-pdf")
+def export_project_pdf_v2(project_id: str, request: Request, db: Session = Depends(get_db)):
+    """Exporta relatorio executivo financeiro do projeto em PDF (v1.1.1).
+
+    Utiliza FinanceReportService com design corporativo, cards de KPI,
+    tabelas zebradas e selo de auditoria. Registra evento GENERATE_FINANCIAL_REPORT
+    na tabela audit_logs para rastreabilidade.
+    """
+    try:
+        pdf_bytes = FinanceReportService.generate(db, project_id)
+
+        # -- Audit: registrar geracao do relatorio --
+        try:
+            client_ip = request.client.host if request.client else None
+            audit_entry = models.AuditLog(
+                id=uuid4(),
+                timestamp=datetime.utcnow(),
+                method="GET",
+                path=f"/projects/{project_id}/export-pdf",
+                status_code=200,
+                user_agent=request.headers.get("user-agent", "")[:500],
+                client_ip=client_ip,
+                request_body={"event": "GENERATE_FINANCIAL_REPORT", "project_id": project_id},
+                response_summary="PDF generated successfully",
+                duration_ms=0,
+            )
+            db.add(audit_entry)
+            db.commit()
+        except Exception:
+            db.rollback()  # Auditoria nao deve quebrar o download
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=relatorio_vyron_{project_id[:8]}.pdf"},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar PDF: {str(e)}")
+
+
 @router.get("/projects/{project_id}/export/pdf")
 def export_project_pdf(project_id: str, db: Session = Depends(get_db)):
-    """Exporta o relatório executivo financeiro do projeto em PDF."""
+    """Exporta o relatorio executivo financeiro do projeto em PDF (legado)."""
     try:
         pdf_bytes = generate_project_pdf(db, project_id)
         return Response(

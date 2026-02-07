@@ -838,11 +838,13 @@ elif page == "📊 Dashboard Financeiro":
                 st.markdown("")
                 _, dl_col, _ = st.columns([1, 2, 1])
                 with dl_col:
-                    pdf_data, pdf_err = make_request("GET", f"/projects/{project_id}/export/pdf")
+                    pdf_data, pdf_err = make_request("GET", f"/projects/{project_id}/export-pdf")
                     if pdf_data and not pdf_err:
-                        st.download_button("📄 Baixar PDF", data=pdf_data,
-                                           file_name=f"relatorio_{project_id[:8]}.pdf",
+                        st.download_button("📄 Baixar Relatório em PDF", data=pdf_data,
+                                           file_name=f"relatorio_vyron_{project_id[:8]}.pdf",
                                            mime="application/pdf", type="primary", use_container_width=True)
+                    elif pdf_err:
+                        st.warning(f"Erro ao gerar PDF: {pdf_err}")
 
             # Gráfico
             with st.container(border=True):
