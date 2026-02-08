@@ -21,6 +21,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.sales.router import router as sales_router
 from app.modules.brain.router import router as brain_router
 from app.modules.finance.router import router as finance_router
+from app.modules.core.router import router as core_router
 
 # ── Middleware de auditoria ──────────────────────────────────────
 from app.middleware.audit import AuditMiddleware
@@ -69,3 +70,4 @@ app.include_router(auth_router)      # /login, /db-test
 app.include_router(sales_router)     # /clients/*, /interactions/*, /radar/*
 app.include_router(brain_router)     # /ai/*, /brain/*
 app.include_router(finance_router)   # /projects/*, /revenues/*, /expenses/*, /manual/*
+app.include_router(core_router)      # /audit-logs

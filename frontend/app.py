@@ -188,7 +188,6 @@ PAGES = [
     "📡 Radar de Vendas",
     "🎯 Caçador de Leads",
     "👥 CRM — Clientes",
-    "── 🧠 Agency Brain ──",
     "🧠 Vyron Agency Brain",
     "── 💰 Finance & Ops ──",
     "📊 Dashboard Financeiro",

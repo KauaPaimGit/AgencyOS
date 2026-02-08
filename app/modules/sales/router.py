@@ -1,6 +1,9 @@
 """
 Sales Router — CRM (Clientes), Interações e Radar de Vendas (Prospecção)
 """
+import logging
+import threading
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -10,7 +13,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 from uuid import uuid4
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app import models, schemas
 from app.services import (
     generate_embedding,
@@ -18,6 +21,9 @@ from app.services import (
     export_businesses_to_excel,
     get_client_interactions,
 )
+from app.modules.sales.repository import save_discovery_batch
+
+log = logging.getLogger("vyron.sales.router")
 
 router = APIRouter(tags=["Sales"])
 
@@ -232,6 +238,33 @@ class RadarConvertRequest(BaseModel):
     project_value: float = 5000.0
 
 
+def _persist_leads_background(businesses: list, source_query: str) -> None:
+    """Salva lote de leads em thread separada para não travar a resposta."""
+    db = SessionLocal()
+    try:
+        inserted = save_discovery_batch(db, businesses, source_query)
+        # Audit simplificado — 1 registro para o lote inteiro
+        audit = models.AuditLog(
+            id=uuid4(),
+            timestamp=datetime.utcnow(),
+            method="BATCH",
+            path="/radar/search [lead_discovery]",
+            status_code=201,
+            user_agent="background-thread",
+            client_ip=None,
+            request_body={"source_query": source_query, "total": len(businesses)},
+            response_summary=f"{inserted} leads inseridos de {len(businesses)} encontrados",
+            duration_ms=0,
+        )
+        db.add(audit)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        log.warning("Erro ao persistir leads em background: %s", exc)
+    finally:
+        db.close()
+
+
 @router.get("/radar/search")
 def search_businesses_endpoint(query: str, location: str, limit: int = 20):
     """Busca empresas usando Google Maps via SerpApi."""
@@ -243,6 +276,16 @@ def search_businesses_endpoint(query: str, location: str, limit: int = 20):
             )
 
         businesses = search_business(query, location, limit)
+
+        # Persiste leads em background (não bloqueia a resposta)
+        if businesses:
+            source_query = f"{query} in {location}"
+            t = threading.Thread(
+                target=_persist_leads_background,
+                args=(businesses, source_query),
+                daemon=True,
+            )
+            t.start()
 
         return {
             "success": True,

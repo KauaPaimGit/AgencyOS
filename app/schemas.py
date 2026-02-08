@@ -370,3 +370,21 @@ class ExpenseResponse(BaseModel):
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
+
+
+# ============================================
+# SCHEMAS: AUDIT LOGS
+# ============================================
+
+class AuditLogResponse(BaseModel):
+    """Schema de resposta para logs de auditoria."""
+    id: UUID
+    timestamp: datetime
+    method: str
+    path: str
+    status_code: int
+    duration_ms: Optional[int] = None
+    client_ip: Optional[str] = None
+    user_agent: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

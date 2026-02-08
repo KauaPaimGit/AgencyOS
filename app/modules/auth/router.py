@@ -64,7 +64,7 @@ def test_database_connection(db: Session = Depends(get_db)):
 
         return {
             "database_connection": "OK" if result == 1 else "FAIL",
-            "pgvector_extension": "INSTALLED" if vector_check > 0 else "MISSING",
+            "pgvector_extension": "INSTALLED" if vector_check and vector_check > 0 else "MISSING",
             "sqlalchemy_mode": "Working",
         }
     except Exception as e:

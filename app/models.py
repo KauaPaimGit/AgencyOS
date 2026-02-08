@@ -525,6 +525,31 @@ class DocumentChunk(Base):
 
 
 # ============================================
+# MÓDULO: LEAD DISCOVERY (Histórico do Lead Hunter)
+# ============================================
+
+class LeadDiscovery(Base):
+    """Histórico de leads encontrados pelo Caçador de Leads (Radar de Vendas)."""
+    __tablename__ = "lead_discoveries"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    address: Mapped[Optional[str]] = mapped_column(String(500))
+    phone: Mapped[Optional[str]] = mapped_column(String(50))
+    rating: Mapped[Optional[Decimal]] = mapped_column(Numeric(3, 1))
+    source_query: Mapped[str] = mapped_column(String(255), nullable=False, comment="Ex.: 'pizzaria in Passos, MG'")
+    place_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True, comment="ID do Google Maps para dedup")
+
+    discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_lead_disc_name', 'name'),
+        Index('idx_lead_disc_query', 'source_query'),
+        Index('idx_lead_disc_discovered', 'discovered_at'),
+    )
+
+
+# ============================================
 # MÓDULO: AUDIT LOG (Middleware de Auditoria)
 # ============================================
 
