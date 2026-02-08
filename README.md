@@ -1,11 +1,11 @@
 <div align="center">
 
-# 🚀 Vyron System v1.1
+# 🚀 Vyron System v1.1.1
 
 ### Enterprise AI ERP — Plataforma Modular de Gestão Inteligente
 
 [![Status](https://img.shields.io/badge/Status-Produção-brightgreen?style=for-the-badge)]()
-[![Version](https://img.shields.io/badge/Versão-1.1.0-blue?style=for-the-badge)]()
+[![Version](https://img.shields.io/badge/Versão-1.1.1-blue?style=for-the-badge)]()
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-Modular-009688?style=for-the-badge&logo=fastapi&logoColor=white)]()
 
