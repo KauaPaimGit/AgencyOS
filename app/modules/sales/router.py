@@ -376,6 +376,50 @@ def get_radar_history(limit: int = 30, db: Session = Depends(get_db)):
     return {"history": history, "count": len(history)}
 
 
+@router.get("/radar/leads")
+def list_radar_leads(
+    source_query: str | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    """
+    Lista leads persistidos na tabela lead_discoveries.
+    Retorna IDs (UUID), nome, query de origem e status de spy (tem intel?).
+    """
+    from sqlalchemy import desc
+    from sqlalchemy.orm import joinedload
+
+    q = db.query(models.LeadDiscovery).options(
+        joinedload(models.LeadDiscovery.competitor_intels)
+    )
+    if source_query:
+        q = q.filter(models.LeadDiscovery.source_query.ilike(f"%{source_query}%"))
+    leads = q.order_by(desc(models.LeadDiscovery.discovered_at)).limit(limit).all()
+
+    results = []
+    for ld in leads:
+        intel = ld.competitor_intels[0] if ld.competitor_intels else None
+        results.append({
+            "id": str(ld.id),
+            "name": ld.name,
+            "place_id": ld.place_id,
+            "address": ld.address,
+            "phone": ld.phone,
+            "rating": float(ld.rating) if ld.rating else None,
+            "source_query": ld.source_query,
+            "discovered_at": ld.discovered_at.isoformat() if ld.discovered_at else None,
+            "has_intel": bool(ld.competitor_intels),
+            "intel_summary": intel.analysis_summary if intel else None,
+            "ads_platform": intel.ads_platform if intel else None,
+            "traffic_tier": intel.estimated_traffic_tier if intel else None,
+            "tech_stack": intel.tech_stack if intel else None,
+            "market_sentiment": intel.market_sentiment if intel else None,
+            "website_url": intel.website_url if intel else None,
+        })
+
+    return {"leads": results, "count": len(results)}
+
+
 @router.get("/radar/export")
 def export_radar_results(query: str, location: str, limit: int = 20):
     """Exporta resultados da busca para Excel."""

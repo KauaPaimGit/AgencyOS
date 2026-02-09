@@ -529,57 +529,187 @@ elif page == "🎯 Caçador de Leads":
     st.markdown('<p class="main-header">🎯 Caçador de Leads</p>', unsafe_allow_html=True)
     st.markdown("**Qualifique e priorize seus leads com apoio da IA.**")
 
-    st.markdown("---")
-    clients_data, clients_err = api_clients(limit=500)
-    if clients_err:
-        st.error(clients_err)
-    elif not clients_data:
-        st.info("Nenhum lead no CRM. Capture empresas pelo **📡 Radar de Vendas** primeiro.")
-    else:
-        # Filtros
-        st.markdown("### 🔍 Filtrar Leads")
-        fc1, fc2 = st.columns(2)
-        with fc1:
-            status_filter = st.selectbox("Status", ["Todos", "lead", "prospect", "active", "inactive"])
-        with fc2:
-            sort_by = st.selectbox("Ordenar por", ["Mais recentes", "Nome A-Z"])
+    tab_crm, tab_spy = st.tabs(["🤖 Qualificação de CRM", "🕵️ Spy Module — Inteligência Competitiva"])
 
-        filtered = clients_data
-        if status_filter != "Todos":
-            filtered = [c for c in filtered if c.get("status") == status_filter]
-        if sort_by == "Nome A-Z":
-            filtered.sort(key=lambda c: c.get("name", "").lower())
-        else:
-            filtered.sort(key=lambda c: c.get("created_at", ""), reverse=True)
-
-        st.markdown(f"**{len(filtered)}** lead(s) encontrado(s)")
+    # ═══════════════════════════════════════════
+    # TAB 1 — Qualificação CRM (existente)
+    # ═══════════════════════════════════════════
+    with tab_crm:
         st.markdown("---")
+        clients_data, clients_err = api_clients(limit=500)
+        if clients_err:
+            st.error(clients_err)
+        elif not clients_data:
+            st.info("Nenhum lead no CRM. Capture empresas pelo **📡 Radar de Vendas** primeiro.")
+        else:
+            # Filtros
+            st.markdown("### 🔍 Filtrar Leads")
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                status_filter = st.selectbox("Status", ["Todos", "lead", "prospect", "active", "inactive"])
+            with fc2:
+                sort_by = st.selectbox("Ordenar por", ["Mais recentes", "Nome A-Z"])
 
-        for cli in filtered:
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([3, 1, 1])
-                with c1:
-                    status_icon = {"lead": "🟡", "prospect": "🟠", "active": "🟢", "inactive": "⚫"}.get(cli.get("status"), "⚪")
-                    st.markdown(f"### {status_icon} {cli['name']}")
-                    st.caption(f"📧 {cli.get('email','—')} | 📞 {cli.get('phone','—')}")
-                    if cli.get("company"):
-                        st.markdown(f"🏢 {cli['company']}")
-                with c2:
-                    st.markdown(f"**Status:** {cli.get('status','—')}")
-                    created = (cli.get("created_at") or "")[:10]
-                    st.caption(f"Criado: {created}")
-                with c3:
-                    if st.button("🤖 Qualificar", key=f"qualify_{cli['id']}", use_container_width=True):
-                        with st.spinner("Analisando com IA..."):
-                            answer, err = send_chat(
-                                f"Analise este lead e diga se é quente ou frio. "
-                                f"Nome: {cli['name']}, Empresa: {cli.get('company','N/A')}, "
-                                f"Status: {cli.get('status','N/A')}, Email: {cli.get('email','N/A')}"
-                            )
-                        if answer:
-                            st.info(f"🤖 **IA:** {answer}")
+            filtered = clients_data
+            if status_filter != "Todos":
+                filtered = [c for c in filtered if c.get("status") == status_filter]
+            if sort_by == "Nome A-Z":
+                filtered.sort(key=lambda c: c.get("name", "").lower())
+            else:
+                filtered.sort(key=lambda c: c.get("created_at", ""), reverse=True)
+
+            st.markdown(f"**{len(filtered)}** lead(s) encontrado(s)")
+            st.markdown("---")
+
+            for cli in filtered:
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns([3, 1, 1])
+                    with c1:
+                        status_icon = {"lead": "🟡", "prospect": "🟠", "active": "🟢", "inactive": "⚫"}.get(cli.get("status"), "⚪")
+                        st.markdown(f"### {status_icon} {cli['name']}")
+                        st.caption(f"📧 {cli.get('email','—')} | 📞 {cli.get('phone','—')}")
+                        if cli.get("company"):
+                            st.markdown(f"🏢 {cli['company']}")
+                    with c2:
+                        st.markdown(f"**Status:** {cli.get('status','—')}")
+                        created = (cli.get("created_at") or "")[:10]
+                        st.caption(f"Criado: {created}")
+                    with c3:
+                        if st.button("🤖 Qualificar", key=f"qualify_{cli['id']}", use_container_width=True):
+                            with st.spinner("Analisando com IA..."):
+                                answer, err = send_chat(
+                                    f"Analise este lead e diga se é quente ou frio. "
+                                    f"Nome: {cli['name']}, Empresa: {cli.get('company','N/A')}, "
+                                    f"Status: {cli.get('status','N/A')}, Email: {cli.get('email','N/A')}"
+                                )
+                            if answer:
+                                st.info(f"🤖 **IA:** {answer}")
+                            else:
+                                st.warning(f"Erro: {err}")
+
+    # ═══════════════════════════════════════════
+    # TAB 2 — Spy Module (Inteligência Competitiva)
+    # ═══════════════════════════════════════════
+    with tab_spy:
+        st.markdown("---")
+        st.markdown("""
+        > **🕵️ Spy Module** — Analise a presença digital dos seus leads capturados pelo Radar.
+        > O sistema coleta dados de **Ads, SEO, Tech Stack e Sentimento de Mercado**
+        > e indexa os insights no **Agency Brain (RAG)** para consultas futuras.
+        """)
+
+        # Buscar leads persistidos do Radar
+        spy_data, spy_err = make_request("GET", "/radar/leads", params={"limit": 100})
+
+        if spy_err:
+            st.error(spy_err)
+        elif not spy_data or not spy_data.get("leads"):
+            st.info("Nenhum lead do Radar encontrado. Faça uma busca no **📡 Radar de Vendas** primeiro para alimentar a base.")
+        else:
+            leads_list = spy_data["leads"]
+
+            # Filtros de spy
+            st.markdown("### 🔍 Filtrar Leads do Radar")
+            sf1, sf2 = st.columns(2)
+            with sf1:
+                spy_filter = st.selectbox("Intel Status", ["Todos", "Com Intel", "Sem Intel"], key="spy_filter")
+            with sf2:
+                queries_available = list(set(ld.get("source_query", "") for ld in leads_list if ld.get("source_query")))
+                queries_available.insert(0, "Todas as buscas")
+                spy_query_filter = st.selectbox("Busca de Origem", queries_available, key="spy_query_filter")
+
+            # Aplicar filtros
+            filtered_leads = leads_list
+            if spy_filter == "Com Intel":
+                filtered_leads = [ld for ld in filtered_leads if ld.get("has_intel")]
+            elif spy_filter == "Sem Intel":
+                filtered_leads = [ld for ld in filtered_leads if not ld.get("has_intel")]
+            if spy_query_filter != "Todas as buscas":
+                filtered_leads = [ld for ld in filtered_leads if ld.get("source_query") == spy_query_filter]
+
+            st.markdown(f"**{len(filtered_leads)}** lead(s) do Radar")
+            st.markdown("---")
+
+            for ld in filtered_leads:
+                with st.container(border=True):
+                    sc1, sc2, sc3 = st.columns([3, 2, 1])
+                    with sc1:
+                        intel_icon = "🟢" if ld.get("has_intel") else "🔴"
+                        st.markdown(f"### {intel_icon} {ld['name']}")
+                        st.caption(f"📍 {ld.get('address', '—')}")
+                        if ld.get("phone"):
+                            st.caption(f"📞 {ld['phone']}")
+                        if ld.get("website_url"):
+                            st.caption(f"🌐 {ld['website_url']}")
+                        if ld.get("rating"):
+                            st.caption(f"⭐ {ld['rating']}")
+                        st.caption(f"🔎 Origem: _{ld.get('source_query', '—')}_")
+
+                    with sc2:
+                        if ld.get("has_intel"):
+                            st.markdown("**✅ Intel Coletada**")
+                            st.markdown(f"📢 Ads: `{ld.get('ads_platform', '—')}`")
+                            st.markdown(f"📊 Tráfego: `{ld.get('traffic_tier', '—')}`")
+                            st.markdown(f"🛠️ Tech: `{ld.get('tech_stack', '—')}`")
+                            sentiment = ld.get("market_sentiment")
+                            if sentiment is not None:
+                                sent_pct = int((sentiment + 1) * 50)
+                                sent_emoji = "🟢" if sent_pct >= 60 else ("🟡" if sent_pct >= 40 else "🔴")
+                                st.markdown(f"{sent_emoji} Sentimento: **{sent_pct}%**")
+                            if ld.get("intel_summary"):
+                                with st.expander("📋 Resumo da Análise"):
+                                    st.write(ld["intel_summary"])
                         else:
-                            st.warning(f"Erro: {err}")
+                            st.markdown("**⏳ Aguardando análise**")
+                            st.caption("Clique em 'Espionar' para iniciar")
+
+                    with sc3:
+                        token = st.session_state.get("token", "")
+                        user_role = st.session_state.get("user_role", "")
+
+                        # Botão Espionar
+                        can_spy = user_role.lower() in ("admin", "power_user") if user_role else False
+                        if can_spy:
+                            if st.button("🕵️ Espionar", key=f"spy_{ld['id']}", use_container_width=True):
+                                with st.spinner("🔍 Analisando presença digital..."):
+                                    headers = {"Authorization": f"Bearer {token}"}
+                                    spy_result, spy_e = make_request(
+                                        "POST",
+                                        f"/radar/leads/{ld['id']}/spy",
+                                        headers=headers,
+                                        json={"force_refresh": ld.get("has_intel", False)},
+                                    )
+                                if spy_result and not spy_e:
+                                    st.success(f"✅ {spy_result.get('message', 'Análise completa!')}")
+                                    intel_data = spy_result.get("intel", {})
+                                    st.markdown(f"📢 **Ads:** {intel_data.get('ads_platform', '—')}")
+                                    st.markdown(f"📊 **Tráfego:** {intel_data.get('estimated_traffic_tier', '—')}")
+                                    st.markdown(f"🛠️ **Tech Stack:** {intel_data.get('tech_stack', '—')}")
+                                    if intel_data.get("analysis_summary"):
+                                        st.info(f"📋 {intel_data['analysis_summary']}")
+                                    st.caption("🔄 Recarregue a página para ver os dados atualizados na tabela.")
+                                else:
+                                    st.error(f"Erro: {spy_e}")
+                        else:
+                            st.button("🔒 Spy (Admin)", key=f"spy_locked_{ld['id']}", disabled=True, use_container_width=True)
+                            st.caption("Requer perfil Admin")
+
+                        # Botão Predição
+                        if ld.get("has_intel"):
+                            if st.button("📊 Predição", key=f"pred_{ld['id']}", use_container_width=True):
+                                with st.spinner("Calculando viabilidade..."):
+                                    pred_data, pred_err = make_request("GET", f"/radar/leads/{ld['id']}/predict")
+                                if pred_data and not pred_err:
+                                    vi = pred_data.get("viability_index", 0)
+                                    risk = pred_data.get("risk_level", "—")
+                                    rec = pred_data.get("recommendation", "—")
+
+                                    risk_colors = {"low": "🟢", "medium": "🟡", "high": "🔴"}
+                                    st.markdown(f"### {risk_colors.get(risk, '⚪')} Viabilidade: **{vi}/100**")
+                                    st.markdown(f"**Risco:** {risk.upper()}")
+                                    st.info(f"💡 {rec}")
+                                else:
+                                    st.warning(f"Erro: {pred_err}")
 
 
 # ╔═══════════════════════════════════════════════════════════════╗
