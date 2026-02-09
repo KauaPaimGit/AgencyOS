@@ -43,7 +43,7 @@ except Exception as e:
 app = FastAPI(
     title="Vyron System - Core API",
     description="Enterprise AI ERP — Sistema Inteligente de Gestão Empresarial (Modular)",
-    version="1.2.0",
+    version="1.2.1",
 )
 
 # ── CORS ─────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ app.add_middleware(AuditMiddleware)
 # ── Health-check ─────────────────────────────────────────────
 @app.get("/")
 def health_check():
-    return {"status": "running", "service": "Vyron System API", "version": "1.2.0"}
+    return {"status": "running", "service": "Vyron System API", "version": "1.2.1"}
 
 
 # ── Registro dos Routers ───────────────────────────────────────

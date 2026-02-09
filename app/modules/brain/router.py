@@ -60,8 +60,9 @@ async def chat_with_rag(request: schemas.ChatRequest, db: Session = Depends(get_
 
     O sistema:
     1. Busca interações relevantes no banco usando embeddings
-    2. Usa esse contexto para responder via GPT
-    3. Suporta imagens (Base64) para análise visual (recibos, notas etc.)
+    2. Busca chunks de inteligência competitiva (competitor_intel) indexados pelo Spy Module
+    3. Usa esse contexto combinado para responder via GPT
+    4. Suporta imagens (Base64) para análise visual (recibos, notas etc.)
     """
     query_embedding = await generate_embedding(request.query)
 
@@ -78,7 +79,22 @@ async def chat_with_rag(request: schemas.ChatRequest, db: Session = Depends(get_
             [f"Interação ({i.type}) em {i.interaction_date}:\n{i.content}" for i in relevant]
         )
     else:
-        context_text = "Nenhuma informação disponível no banco de dados."
+        context_text = "Nenhuma informação de interações disponível."
+
+    # ── Busca chunks de competitor_intel (RAG do Spy Module) ──
+    intel_chunks = (
+        db.query(models.DocumentChunk)
+        .filter(models.DocumentChunk.embedding.isnot(None))
+        .filter(models.DocumentChunk.filename.like("spy_intel/%"))
+        .order_by(models.DocumentChunk.embedding.cosine_distance(query_embedding))
+        .limit(3)
+        .all()
+    )
+    if intel_chunks:
+        intel_context = "\n\n---\n\n".join(
+            [f"[Inteligência Competitiva — {c.filename}]:\n{c.content}" for c in intel_chunks]
+        )
+        context_text = f"{context_text}\n\n=== INTELIGÊNCIA COMPETITIVA (Spy Module) ===\n\n{intel_context}"
 
     answer = await generate_answer(
         query=request.query,

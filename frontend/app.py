@@ -10,6 +10,7 @@ Interface Streamlit reorganizada por blocos funcionais:
 """
 
 import os
+import sys
 import json
 import time
 import base64
@@ -18,6 +19,10 @@ import requests
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, date
+
+# Adiciona frontend/ ao path para imports locais
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from utils.styles import apply_custom_styles
 
 # ─────────────────────────────────────────────────────────────
 # CONFIGURAÇÃO DA PÁGINA
@@ -29,21 +34,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+# ─────────────────────────────────────────────────────────────
+# TEMA DARK HITECH v1.2
+# ─────────────────────────────────────────────────────────────
+apply_custom_styles()
 
-# ─────────────────────────────────────────────────────────────
-# ESTILOS GLOBAIS
-# ─────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-.main-header  { font-size:2.4rem; font-weight:bold; color:#1f77b4; margin-bottom:.6rem; }
-.section-hdr  { font-size:1.1rem; font-weight:600; color:#555; margin:0 0 .3rem 0; }
-.block-label  { font-size:.85rem; color:#888; letter-spacing:.05rem; text-transform:uppercase; }
-.metric-card  { background:#f0f2f6; padding:1rem; border-radius:.5rem; margin:.5rem 0; }
-.sidebar-block-title { font-size:.75rem; color:#999; letter-spacing:.12rem;
-                       text-transform:uppercase; margin:1.2rem 0 .3rem .2rem; }
-</style>
-""", unsafe_allow_html=True)
+API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -227,7 +223,7 @@ if api_h and not api_err:
     st.sidebar.success("✅ API Online")
 else:
     st.sidebar.error("❌ API Offline")
-st.sidebar.caption("Vyron System v2.0 — Modular")
+st.sidebar.caption("Vyron System v1.2.1 — Dark HiTech")
 
 
 # ╔═══════════════════════════════════════════════════════════════╗
@@ -329,8 +325,10 @@ elif page == "📡 Radar de Vendas":
 
     if "radar_results" not in st.session_state:
         st.session_state.radar_results = None
-    if "radar_history" not in st.session_state:
-        st.session_state.radar_history = []
+
+    # ── Carregar histórico do banco (persiste entre sessões) ──
+    db_history, hist_err = make_request("GET", "/radar/history", params={"limit": 30})
+    history_entries = db_history.get("history", []) if db_history and not hist_err else []
 
     if search_btn:
         if not search_query or not search_location:
@@ -341,32 +339,39 @@ elif page == "📡 Radar de Vendas":
                                          params={"query": search_query, "location": search_location, "limit": 20})
             if data and not err:
                 st.session_state.radar_results = data
-                st.session_state.radar_history.insert(0, {
-                    "query": search_query, "location": search_location,
-                    "total": data["total"],
-                    "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "data": data,
-                })
-                if len(st.session_state.radar_history) > 10:
-                    st.session_state.radar_history = st.session_state.radar_history[:10]
                 st.success(f"✅ {data['total']} empresa(s) encontrada(s)!")
+                st.rerun()  # recarrega para atualizar histórico do DB
             else:
                 st.error(err)
                 if "SERPAPI_KEY" in str(err):
                     st.info("Configure `SERPAPI_KEY` no `.env` e reinicie o backend.")
 
-    # ── Histórico ──
-    if st.session_state.radar_history:
-        st.markdown("---")
-        with st.expander("📜 Histórico de buscas", expanded=False):
-            for idx, entry in enumerate(st.session_state.radar_history):
+    # ── Histórico (sempre visível, carregado do banco) ──
+    st.markdown("---")
+    if history_entries:
+        with st.expander("📜 Histórico de buscas", expanded=True):
+            for idx, entry in enumerate(history_entries):
                 c1, c2 = st.columns([4, 1])
                 with c1:
-                    st.markdown(f"🔍 **{entry['query']}** em {entry['location']} — {entry['total']} resultado(s) — {entry['timestamp']}")
+                    ts = entry.get("last_at", "")[:16].replace("T", " ") if entry.get("last_at") else ""
+                    st.markdown(
+                        f"🔍 **{entry['query']}** em {entry['location']} "
+                        f"— {entry['total']} lead(s) — {ts}"
+                    )
                 with c2:
-                    if st.button("Carregar", key=f"hist_{idx}"):
-                        st.session_state.radar_results = entry["data"]
-                        st.rerun()
+                    if st.button("🔄 Rebuscar", key=f"hist_{idx}"):
+                        with st.spinner("Rebuscando..."):
+                            rdata, rerr = make_request(
+                                "GET", "/radar/search",
+                                params={"query": entry["query"], "location": entry["location"], "limit": 20},
+                            )
+                        if rdata and not rerr:
+                            st.session_state.radar_results = rdata
+                            st.rerun()
+                        else:
+                            st.error(rerr)
+    else:
+        st.info("📜 Nenhuma busca anterior encontrada. Faça sua primeira busca acima!")
 
     # ── Resultados ──
     if st.session_state.radar_results:
@@ -426,6 +431,76 @@ elif page == "📡 Radar de Vendas":
                 st.metric("Com Telefone", f"{len([b for b in businesses if b.get('phone')])}/{len(businesses)}")
             with s4:
                 st.metric("Com Website", f"{len([b for b in businesses if b.get('website')])}/{len(businesses)}")
+
+            # ── Termômetro de Mercado (Market Predictor) ──
+            st.markdown("---")
+            with st.container(border=True):
+                st.markdown("### 🌡️ Termômetro de Mercado")
+                st.caption("Índice de viabilidade baseado na inteligência competitiva do nicho")
+                search_q = f"{results['query']} in {results['location']}"
+                pred_data, pred_err = make_request("GET", "/radar/predict", params={"query": search_q})
+                if pred_data and not pred_err:
+                    vi = pred_data.get("viability_index", 0)
+                    risk = pred_data.get("risk_level", "medium")
+                    rec = pred_data.get("recommendation", "")
+
+                    # Termômetro visual com barra de progresso gradient
+                    if vi >= 70:
+                        thermo_color = "#38A169"
+                        risk_label = "🟢 Risco Baixo"
+                    elif vi >= 40:
+                        thermo_color = "#ECC94B"
+                        risk_label = "🟡 Risco Moderado"
+                    else:
+                        thermo_color = "#E53E3E"
+                        risk_label = "🔴 Risco Alto"
+
+                    # Barra de progresso personalizada com Vivid Violet
+                    st.markdown(f"""
+                    <div style="margin: 1rem 0;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span style="color: #A0AEC0; font-size: 0.85rem;">Viabilidade do Nicho</span>
+                            <span style="color: #FFFFFF; font-weight: bold; font-size: 1.1rem;">{vi}/100</span>
+                        </div>
+                        <div style="background: #2D3748; border-radius: 10px; height: 24px; overflow: hidden; border: 1px solid #4A5568;">
+                            <div style="
+                                width: {vi}%;
+                                height: 100%;
+                                background: linear-gradient(90deg, {thermo_color}, #7000FF);
+                                border-radius: 10px;
+                                transition: width 0.8s ease;
+                                box-shadow: 0 0 12px rgba(112, 0, 255, 0.4);
+                            "></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Métricas do Predictor
+                    pm1, pm2, pm3, pm4 = st.columns(4)
+                    with pm1:
+                        st.metric("📊 Índice", f"{vi}/100")
+                    with pm2:
+                        st.metric("📈 Sentimento", f"{pred_data.get('sentiment_score', 0):.2f}")
+                    with pm3:
+                        st.metric("📡 Tráfego", pred_data.get("traffic_tier", "—").upper())
+                    with pm4:
+                        st.metric(risk_label, pred_data.get("ads_status", "—"))
+
+                    # Recomendação Estratégica
+                    st.markdown(f"""
+                    <div style="background: #2D3748; border-left: 4px solid #7000FF; padding: 1rem; border-radius: 0 8px 8px 0; margin-top: 0.5rem;">
+                        <p style="color: #A0AEC0; font-size: 0.8rem; margin-bottom: 4px;">💡 RECOMENDAÇÃO ESTRATÉGICA</p>
+                        <p style="color: #E2E8F0; font-size: 0.9rem; line-height: 1.5;">{rec}</p>
+                        <p style="color: #718096; font-size: 0.75rem; margin-top: 8px;">
+                            Baseado em {pred_data.get('competitors_analyzed', 0)} análise(s) competitiva(s)
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info(
+                        "🔍 Execute o **Spy Module** nos leads deste nicho para ativar o Termômetro de Mercado. "
+                        "O Market Predictor cruza dados de tráfego, ads e sentimento para gerar o índice de viabilidade."
+                    )
 
             # Export
             cc1, cc2 = st.columns([3, 1])
@@ -833,10 +908,10 @@ elif page == "📊 Dashboard Financeiro":
                     mc = "🟢" if margin_val > 50 else "🟡" if margin_val > 20 else "🔴"
                     st.metric(f"{mc} Margem", data["margin_percentage"])
 
-                # Download PDF
+                # Download PDF & Contrato
                 st.markdown("")
-                _, dl_col, _ = st.columns([1, 2, 1])
-                with dl_col:
+                pdf_col, contract_col = st.columns(2)
+                with pdf_col:
                     pdf_data, pdf_err = make_request("GET", f"/projects/{project_id}/export-pdf")
                     if pdf_data and not pdf_err:
                         st.download_button("📄 Baixar Relatório em PDF", data=pdf_data,
@@ -844,6 +919,14 @@ elif page == "📊 Dashboard Financeiro":
                                            mime="application/pdf", type="primary", use_container_width=True)
                     elif pdf_err:
                         st.warning(f"Erro ao gerar PDF: {pdf_err}")
+                with contract_col:
+                    contract_data, contract_err = make_request("GET", f"/projects/{project_id}/contract")
+                    if contract_data and not contract_err:
+                        st.download_button("📝 Gerar Minuta de Contrato", data=contract_data,
+                                           file_name=f"contrato_vyron_{project_id[:8]}.pdf",
+                                           mime="application/pdf", use_container_width=True)
+                    elif contract_err:
+                        st.warning(f"Erro ao gerar contrato: {contract_err}")
 
             # Gráfico
             with st.container(border=True):
@@ -851,9 +934,16 @@ elif page == "📊 Dashboard Financeiro":
                 fig = go.Figure(data=[go.Pie(
                     labels=["Receitas", "Despesas", "Lucro"],
                     values=[data["total_revenue"], data["total_expense"], data["net_profit"]],
-                    hole=.3, marker_colors=["#2ecc71", "#e74c3c", "#3498db"],
+                    hole=.3, marker_colors=["#38A169", "#E53E3E", "#7000FF"],
+                    textfont=dict(color="#E2E8F0"),
                 )])
-                fig.update_layout(height=380)
+                fig.update_layout(
+                    height=380,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#A0AEC0"),
+                    legend=dict(font=dict(color="#E2E8F0")),
+                )
                 st.plotly_chart(fig, use_container_width=True)
 
             # Análise
@@ -1249,8 +1339,8 @@ elif page == "⚙️ Configurações":
 
 st.markdown("---")
 st.markdown("""
-<div style='text-align:center; color:#666; padding:.8rem;'>
-    <p>🚀 <strong>Vyron System</strong> v2.0 — Modular Architecture</p>
+<div style='text-align:center; color:#A0AEC0; padding:.8rem;'>
+    <p>🚀 <strong style="color:#7000FF;">Vyron System</strong> v1.2.1 — AI Strategy Engine</p>
     <p><small>FastAPI + Streamlit + OpenAI | 2026</small></p>
 </div>
 """, unsafe_allow_html=True)

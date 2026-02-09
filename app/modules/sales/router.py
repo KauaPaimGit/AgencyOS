@@ -23,6 +23,7 @@ from app.services import (
 )
 from app.modules.sales.repository import save_discovery_batch
 from app.modules.sales.spy_service import SpyService
+from app.modules.sales.predictor_service import MarketPredictorService
 
 log = logging.getLogger("vyron.sales.router")
 
@@ -341,6 +342,40 @@ def search_businesses_endpoint(query: str, location: str, limit: int = 20):
         raise HTTPException(status_code=500, detail=f"Erro ao buscar empresas: {str(e)}")
 
 
+@router.get("/radar/history")
+def get_radar_history(limit: int = 30, db: Session = Depends(get_db)):
+    """
+    Retorna histórico de buscas agrupado por source_query,
+    lido diretamente da tabela lead_discoveries.
+    """
+    from sqlalchemy import func, desc
+
+    rows = (
+        db.query(
+            models.LeadDiscovery.source_query,
+            func.count(models.LeadDiscovery.id).label("total"),
+            func.max(models.LeadDiscovery.discovered_at).label("last_at"),
+        )
+        .group_by(models.LeadDiscovery.source_query)
+        .order_by(desc("last_at"))
+        .limit(limit)
+        .all()
+    )
+
+    history = []
+    for row in rows:
+        query_parts = (row.source_query or "").split(" in ", 1)
+        history.append({
+            "source_query": row.source_query,
+            "query": query_parts[0] if query_parts else row.source_query,
+            "location": query_parts[1] if len(query_parts) > 1 else "",
+            "total": row.total,
+            "last_at": row.last_at.isoformat() if row.last_at else None,
+        })
+
+    return {"history": history, "count": len(history)}
+
+
 @router.get("/radar/export")
 def export_radar_results(query: str, location: str, limit: int = 20):
     """Exporta resultados da busca para Excel."""
@@ -515,4 +550,83 @@ async def spy_lead(
         intel=schemas.CompetitorIntelResponse.model_validate(intel),
         rag_indexed=True,
         message=f"Análise completa para '{lead.name}'. Insights indexados no RAG.",
+    )
+
+
+# ══════════════════════════════════════════════
+# MARKET PREDICTOR — Viabilidade de Mercado (v1.2.1)
+# ══════════════════════════════════════════════
+
+@router.get(
+    "/radar/leads/{lead_id}/predict",
+    response_model=schemas.MarketPredictionResponse,
+    summary="Gera predição de viabilidade de mercado para um lead",
+)
+def predict_market_lead(
+    lead_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    📊 **Market Predictor** — Índice de Viabilidade do Nicho.
+
+    Cruza `market_sentiment`, `traffic_tier` e `ads_status`
+    dos CompetitorIntel associados ao lead para gerar:
+    - **Viability Index** (0–100)
+    - **Recomendação Estratégica** automática
+    - **Breakdown** detalhado dos sub-scores
+
+    Requer que o Spy Module tenha sido executado para este lead.
+    """
+    try:
+        result = MarketPredictorService.predict(db, lead_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        log.error("Erro no MarketPredictor para lead %s: %s", lead_id, exc)
+        raise HTTPException(status_code=500, detail=f"Erro na predição: {str(exc)}")
+
+    return schemas.MarketPredictionResponse(
+        viability_index=result.viability_index,
+        sentiment_score=result.sentiment_score,
+        traffic_tier=result.traffic_tier,
+        ads_status=result.ads_status,
+        recommendation=result.recommendation,
+        risk_level=result.risk_level,
+        competitors_analyzed=result.competitors_analyzed,
+        breakdown=result.breakdown,
+    )
+
+
+@router.get(
+    "/radar/predict",
+    response_model=schemas.MarketPredictionResponse,
+    summary="Gera predição de viabilidade para um nicho (por query)",
+)
+def predict_market_query(
+    query: str,
+    db: Session = Depends(get_db),
+):
+    """
+    📊 **Market Predictor (Nicho)** — Predição agregada por source_query.
+
+    Avalia todos os leads de uma query (ex: 'pizzaria in Passos, MG')
+    e retorna o índice de viabilidade do nicho completo.
+    """
+    try:
+        result = MarketPredictorService.predict_by_query(db, query)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        log.error("Erro no MarketPredictor para query '%s': %s", query, exc)
+        raise HTTPException(status_code=500, detail=f"Erro na predição: {str(exc)}")
+
+    return schemas.MarketPredictionResponse(
+        viability_index=result.viability_index,
+        sentiment_score=result.sentiment_score,
+        traffic_tier=result.traffic_tier,
+        ads_status=result.ads_status,
+        recommendation=result.recommendation,
+        risk_level=result.risk_level,
+        competitors_analyzed=result.competitors_analyzed,
+        breakdown=result.breakdown,
     )

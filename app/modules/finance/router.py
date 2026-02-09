@@ -22,6 +22,7 @@ from app.services import (
     _execute_add_marketing_stats,
 )
 from app.modules.finance.report_service import FinanceReportService
+from app.modules.finance.contract_service import ContractService
 
 router = APIRouter(tags=["Finance"])
 
@@ -590,3 +591,82 @@ def export_project_pdf(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao gerar PDF: {str(e)}")
+
+
+# ══════════════════════════════════════════════
+# CONTRACT ENGINE — Geração de Minutas (v1.2.1)
+# ══════════════════════════════════════════════
+
+@router.get(
+    "/projects/{project_id}/contract",
+    summary="Gera minuta de contrato em PDF para um projeto",
+)
+def generate_contract(project_id: str, request: Request, db: Session = Depends(get_db)):
+    """
+    📝 **Contract Engine** — Gera minuta de contrato em PDF.
+
+    Puxa automaticamente:
+    - Nome do cliente / empresa
+    - Valor do contrato
+    - Datas de início e término do projeto
+    - Cláusulas padronizadas de prestação de serviços
+
+    Persiste o registro na tabela `contracts` com status `draft`.
+    """
+    try:
+        pdf_bytes, contract_number = ContractService.generate(db, project_id)
+
+        # Audit log
+        try:
+            client_ip = request.client.host if request.client else None
+            audit_entry = models.AuditLog(
+                id=uuid4(),
+                timestamp=datetime.utcnow(),
+                method="GET",
+                path=f"/projects/{project_id}/contract",
+                status_code=200,
+                user_agent=request.headers.get("user-agent", "")[:500],
+                client_ip=client_ip,
+                request_body={"event": "GENERATE_CONTRACT", "project_id": project_id, "contract_number": contract_number},
+                response_summary=f"Contract {contract_number} generated",
+                duration_ms=0,
+            )
+            db.add(audit_entry)
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=contrato_{contract_number}.pdf"},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar contrato: {str(e)}")
+
+
+@router.get(
+    "/projects/{project_id}/contract/info",
+    response_model=schemas.ContractGenerateResponse,
+    summary="Informações sobre a minuta de contrato sem gerar PDF",
+)
+def contract_info(project_id: str, db: Session = Depends(get_db)):
+    """Retorna metadados do contrato que seria gerado, sem gerar o PDF."""
+    project = db.query(models.Project).filter(models.Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+
+    client = project.client
+    client_name = client.name if client else "N/A"
+    contract_number = ContractService.generate_contract_number(project_id)
+
+    return schemas.ContractGenerateResponse(
+        success=True,
+        contract_number=contract_number,
+        project_name=project.name,
+        client_name=client_name,
+        contract_value=float(project.contract_value) if project.contract_value else 0.0,
+        message=f"Minuta pronta para geração: {contract_number}",
+    )

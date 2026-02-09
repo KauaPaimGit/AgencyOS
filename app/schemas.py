@@ -441,3 +441,33 @@ class SpyAnalysisResponse(BaseModel):
     intel: CompetitorIntelResponse
     rag_indexed: bool = False
     message: str = ""
+
+
+# ============================================
+# SCHEMAS: MARKET PREDICTOR (v1.2.1)
+# ============================================
+
+class MarketPredictionResponse(BaseModel):
+    """Resposta do Market Predictor com índice de viabilidade."""
+    viability_index: int = Field(..., ge=0, le=100, description="Índice de viabilidade 0-100")
+    sentiment_score: float = Field(..., description="Sentimento médio (-1.0 a 1.0)")
+    traffic_tier: str = Field(..., description="Tier de tráfego predominante")
+    ads_status: str = Field(..., description="Plataforma de ads predominante")
+    recommendation: str = Field(..., description="Recomendação estratégica automática")
+    risk_level: str = Field(..., description="Nível de risco: low, medium, high")
+    competitors_analyzed: int = Field(..., description="Quantidade de intels processadas")
+    breakdown: dict = Field(default_factory=dict, description="Detalhamento dos sub-scores")
+
+
+# ============================================
+# SCHEMAS: CONTRACT ENGINE (v1.2.1)
+# ============================================
+
+class ContractGenerateResponse(BaseModel):
+    """Resposta da geração de minuta de contrato."""
+    success: bool
+    contract_number: str
+    project_name: str
+    client_name: str
+    contract_value: float
+    message: str = ""
